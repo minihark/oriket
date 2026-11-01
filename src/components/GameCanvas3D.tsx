@@ -119,8 +119,11 @@ export const GameCanvas3D: React.FC<GameCanvas3DProps> = ({
     renderer.toneMappingExposure = 1.1;
     container.appendChild(renderer.domElement);
 
-    // 3. Lighting
-    const ambientLight = new THREE.AmbientLight(0xfff7ed, 0.75);
+    // 3. Lighting (Warm Scandinavian sun + sky/meadow bounce)
+    const hemiLight = new THREE.HemisphereLight(0xdbeafe, 0x166534, 0.45);
+    scene.add(hemiLight);
+
+    const ambientLight = new THREE.AmbientLight(0xffedd5, 0.55);
     scene.add(ambientLight);
 
     const sunLight = new THREE.DirectionalLight(0xfef08a, 1.4);
@@ -155,6 +158,9 @@ export const GameCanvas3D: React.FC<GameCanvas3DProps> = ({
     let physics = new VehiclePhysics(currentVehicle, 0, 0);
     let vehicleModel = VehicleModelBuilder.buildVehicle(currentVId);
     scene.add(vehicleModel.root);
+    if (vehicleModel.trailer) {
+      scene.add(vehicleModel.trailer);
+    }
 
     stateRef.current.physics = physics;
     stateRef.current.vehicleModel = vehicleModel;
@@ -163,7 +169,7 @@ export const GameCanvas3D: React.FC<GameCanvas3DProps> = ({
     // Start engine hum
     sounds.startEngine(currentVId);
 
-    // 7. Particle Systems (Water spray, exhaust flames, tire dust)
+    // 7. Particle Systems (Water spray, exhaust flames, tire dust, sparkles)
     const particleGroup = new THREE.Group();
     scene.add(particleGroup);
 
@@ -185,14 +191,31 @@ export const GameCanvas3D: React.FC<GameCanvas3DProps> = ({
     const smokeGeo = new THREE.DodecahedronGeometry(0.35, 0);
     const smokeMat = new THREE.MeshBasicMaterial({ color: 0xe2e8f0, transparent: true, opacity: 0.65 });
 
+    const sparkleGeo = new THREE.DodecahedronGeometry(0.2, 0);
+    const sparkleMat = new THREE.MeshBasicMaterial({ color: 0xfef08a });
+
     const spawnParticle = (
       pos: THREE.Vector3,
       vel: THREE.Vector3,
       type: 'water' | 'smoke' | 'flame' | 'sparkle',
       maxLife: number = 0.6
     ) => {
-      const geo = type === 'water' ? waterGeo : type === 'flame' ? flameGeo : smokeGeo;
-      const mat = type === 'water' ? waterMat : type === 'flame' ? flameMat : smokeMat;
+      const geo =
+        type === 'water'
+          ? waterGeo
+          : type === 'flame'
+          ? flameGeo
+          : type === 'sparkle'
+          ? sparkleGeo
+          : smokeGeo;
+      const mat =
+        type === 'water'
+          ? waterMat
+          : type === 'flame'
+          ? flameMat
+          : type === 'sparkle'
+          ? sparkleMat
+          : smokeMat;
       const mesh = new THREE.Mesh(geo, mat);
       mesh.position.copy(pos);
       particleGroup.add(mesh);
@@ -289,11 +312,18 @@ export const GameCanvas3D: React.FC<GameCanvas3DProps> = ({
           w.rotation.x = phys.wheelRotation;
         });
 
-        // Trailer sync (if tractor)
+        // Trailer sync with articulated kinematics (if tractor)
         if (model.trailer && phys.config.traits.special === 'trailer') {
           model.trailer.position.copy(phys.trailerPos);
           model.trailer.rotation.set(0, 0, 0);
           model.trailer.rotateY(phys.trailerYaw);
+          model.trailer.rotateX(phys.trailerPitch);
+          model.trailer.rotateZ(phys.trailerRoll);
+          if (model.trailerWheels) {
+            model.trailerWheels.forEach((w) => {
+              w.rotation.x = phys.trailerWheelRot;
+            });
+          }
         }
 
         // Fire truck siren flashing animation
@@ -330,10 +360,37 @@ export const GameCanvas3D: React.FC<GameCanvas3DProps> = ({
           spawnParticle(exWorldPos, backDir.multiplyScalar(8), 'flame', 0.25);
         }
 
-        // Tire skid / smoke particles when moving fast or handbraking
-        if (phys.isGrounded && Math.abs(phys.forwardSpeed) > 8 && Math.random() < 0.35) {
-          const rearPos = phys.position.clone().add(new THREE.Vector3(0, 0.2, 0));
-          spawnParticle(rearPos, new THREE.Vector3(0, 0.5, 0), 'smoke', 0.4);
+        // Tractor vertical diesel exhaust puffs
+        if (phys.config.id === 'tractor' && model.exhaustL) {
+          if (Math.random() < (Math.abs(phys.forwardSpeed) > 1.0 ? 0.32 : 0.08)) {
+            const exWorldPos = new THREE.Vector3();
+            model.exhaustL.getWorldPosition(exWorldPos);
+            const puffVel = new THREE.Vector3(
+              (Math.random() - 0.5) * 0.4,
+              1.6 + Math.random() * 0.8,
+              (Math.random() - 0.5) * 0.4
+            );
+            spawnParticle(exWorldPos, puffVel, 'smoke', 0.55);
+          }
+        }
+
+        // Boat wake water spray
+        if (phys.config.id === 'boat' && Math.abs(phys.forwardSpeed) > 2.5) {
+          const sternL = new THREE.Vector3(-0.6, 0.1, -1.8).applyAxisAngle(new THREE.Vector3(0, 1, 0), phys.yaw).add(phys.position);
+          const sternR = new THREE.Vector3(0.6, 0.1, -1.8).applyAxisAngle(new THREE.Vector3(0, 1, 0), phys.yaw).add(phys.position);
+          const wakeVel = new THREE.Vector3(
+            -Math.sin(phys.yaw) * 2.2 + (Math.random() - 0.5) * 1.5,
+            0.8 + Math.random() * 0.6,
+            -Math.cos(phys.yaw) * 2.2 + (Math.random() - 0.5) * 1.5
+          );
+          spawnParticle(sternL, wakeVel, 'water', 0.35);
+          spawnParticle(sternR, wakeVel, 'water', 0.35);
+        }
+
+        // Tire dust particles when moving fast on ground or handbraking
+        if (phys.isGrounded && Math.abs(phys.forwardSpeed) > 4 && Math.random() < 0.28) {
+          const rearPos = phys.position.clone().add(new THREE.Vector3((Math.random() - 0.5) * 1.2, 0.2, -Math.cos(phys.yaw) * 1.0));
+          spawnParticle(rearPos, new THREE.Vector3(0, 0.6, 0), 'smoke', 0.35);
         }
 
         // ----------------------------------------------------
@@ -359,6 +416,16 @@ export const GameCanvas3D: React.FC<GameCanvas3DProps> = ({
               // Remove star mesh from scene
               const sMesh = curWorld.starMeshes.get(star.id);
               if (sMesh) sMesh.visible = false;
+
+              // Sparkle particle burst
+              for (let i = 0; i < 8; i++) {
+                const sVel = new THREE.Vector3(
+                  (Math.random() - 0.5) * 6,
+                  Math.random() * 5 + 2,
+                  (Math.random() - 0.5) * 6
+                );
+                spawnParticle(new THREE.Vector3(star.x, star.y + 0.5, star.z), sVel, 'sparkle', 0.7);
+              }
             }
           }
         });
@@ -484,6 +551,11 @@ export const GameCanvas3D: React.FC<GameCanvas3DProps> = ({
           p.vel.y += 1.5 * dt; // smoke rises
           const scale = 1.0 + progress * 2.0;
           p.mesh.scale.set(scale, scale, scale);
+        } else if (p.type === 'sparkle') {
+          p.vel.y -= 4 * dt;
+          const scale = Math.max(0.1, (1.0 - progress) * 1.5);
+          p.mesh.scale.set(scale, scale, scale);
+          p.mesh.rotation.y += 4 * dt;
         }
 
         if (p.life >= p.maxLife) {
@@ -511,6 +583,12 @@ export const GameCanvas3D: React.FC<GameCanvas3DProps> = ({
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
       sounds.stopEngine();
+
+      if (vehicleModel.trailer) {
+        scene.remove(vehicleModel.trailer);
+      }
+      scene.remove(vehicleModel.root);
+
       if (container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement);
       }

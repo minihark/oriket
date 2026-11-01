@@ -21,6 +21,9 @@ export interface VehicleTraits {
   special: 'water' | 'trailer' | 'nitro' | 'hover' | 'buoyancy';
   specialNameSv: string;
   specialNameEn: string;
+  driftGrip?: number;
+  suspensionDamping?: number;
+  suspensionTravel?: number;
 }
 
 export interface VehicleConfig {
