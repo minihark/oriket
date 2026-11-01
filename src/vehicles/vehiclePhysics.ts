@@ -125,27 +125,57 @@ export class VehiclePhysics {
     // 7. Integrate position
     this.position.addScaledVector(this.velocity, dt);
 
-    // 8. Ground Collision & Normal Alignment
-    const groundY = IslandTerrain.getHeight(this.position.x, this.position.z);
-    const groundNormal = IslandTerrain.getNormal(this.position.x, this.position.z);
+    // 8. Multi-point Wheel Ground Collision & Normal Alignment
+    const halfL = 1.45;
+    const halfW = 1.15;
+    const sinY = Math.sin(this.yaw);
+    const cosY = Math.cos(this.yaw);
 
-    const vehicleBottom = isBoat ? Math.max(groundY, -0.2) : groundY;
+    // 4 wheel contact points in world space
+    const flX = this.position.x + sinY * halfL - cosY * halfW;
+    const flZ = this.position.z + cosY * halfL + sinY * halfW;
+    const hFL = IslandTerrain.getHeight(flX, flZ);
 
-    if (this.position.y <= vehicleBottom + 0.1) {
+    const frX = this.position.x + sinY * halfL + cosY * halfW;
+    const frZ = this.position.z + cosY * halfL - sinY * halfW;
+    const hFR = IslandTerrain.getHeight(frX, frZ);
+
+    const rlX = this.position.x - sinY * halfL - cosY * halfW;
+    const rlZ = this.position.z - cosY * halfL + sinY * halfW;
+    const hRL = IslandTerrain.getHeight(rlX, rlZ);
+
+    const rrX = this.position.x - sinY * halfL + cosY * halfW;
+    const rrZ = this.position.z - cosY * halfL - sinY * halfW;
+    const hRR = IslandTerrain.getHeight(rrX, rrZ);
+
+    const hCenter = IslandTerrain.getHeight(this.position.x, this.position.z);
+
+    const frontH = (hFL + hFR) * 0.5;
+    const rearH = (hRL + hRR) * 0.5;
+    const leftH = (hFL + hRL) * 0.5;
+    const rightH = (hFR + hRR) * 0.5;
+
+    // Smoothly align pitch and roll with axle elevations
+    const targetPitch = -Math.atan2(frontH - rearH, halfL * 2.0);
+    const targetRoll = Math.atan2(rightH - leftH, halfW * 2.0);
+
+    // Compensation for wheel drop when rotated
+    const tiltOffset = Math.abs(Math.sin(this.pitch)) * (halfL * 0.55) + Math.abs(Math.sin(this.roll)) * (halfW * 0.45);
+
+    // Required ground contact height so wheels NEVER submerge into slopes
+    const highestPoint = Math.max(hFL, hFR, hRL, hRR, hCenter);
+    const vehicleBottom = isBoat
+      ? Math.max(highestPoint, 0.1)
+      : highestPoint + tiltOffset + 0.06;
+
+    if (this.position.y <= vehicleBottom + 0.15) {
       this.position.y = vehicleBottom;
       this.velocity.y = Math.max(0, this.velocity.y);
       this.isGrounded = true;
 
-      // Target pitch and roll from ground normal
-      const forwardSlope = groundNormal.dot(heading);
-      const rightSlope = groundNormal.dot(right);
-
-      const targetPitch = -Math.asin(Math.max(-0.85, Math.min(0.85, forwardSlope)));
-      const targetRoll = Math.asin(Math.max(-0.85, Math.min(0.85, rightSlope)));
-
       this.pitch += (targetPitch - this.pitch) * Math.min(1.0, dt * 12.0);
       this.roll += (targetRoll - this.roll) * Math.min(1.0, dt * 12.0);
-      this.suspensionY *= 0.85;
+      this.suspensionY *= 0.82;
     } else {
       this.isGrounded = false;
       // Self-righting toward zero pitch/roll in the air

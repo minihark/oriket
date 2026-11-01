@@ -65,7 +65,7 @@ export class IslandTerrain {
   // Create the 3D Island Mesh with vertex colors and material
   public static createMesh(): THREE.Mesh {
     const size = 320;
-    const segments = 160;
+    const segments = 96; // 64% fewer vertices for silky 60fps mobile performance
     const geometry = new THREE.PlaneGeometry(size, size, segments, segments);
     geometry.rotateX(-Math.PI / 2);
 

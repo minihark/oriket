@@ -112,9 +112,9 @@ export const GameCanvas3D: React.FC<GameCanvas3DProps> = ({
       powerPreference: 'high-performance',
     });
     renderer.setSize(container.clientWidth, container.clientHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.1;
     container.appendChild(renderer.domElement);
@@ -126,8 +126,8 @@ export const GameCanvas3D: React.FC<GameCanvas3DProps> = ({
     const sunLight = new THREE.DirectionalLight(0xfef08a, 1.4);
     sunLight.position.set(80, 120, 60);
     sunLight.castShadow = true;
-    sunLight.shadow.mapSize.width = 2048;
-    sunLight.shadow.mapSize.height = 2048;
+    sunLight.shadow.mapSize.width = 1024;
+    sunLight.shadow.mapSize.height = 1024;
     sunLight.shadow.camera.near = 10;
     sunLight.shadow.camera.far = 300;
     const shadowD = 90;

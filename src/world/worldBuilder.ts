@@ -613,12 +613,6 @@ export class WorldBuilder {
     flame.name = 'flame';
     group.add(flame);
 
-    // Warm Campfire Point Light
-    const fireLight = new THREE.PointLight(0xf97316, 2.5, 12);
-    fireLight.position.y = 0.9;
-    fireLight.name = 'fireLight';
-    group.add(fireLight);
-
     return group;
   }
 
@@ -736,19 +730,15 @@ export class WorldBuilder {
 
     const mat = new THREE.MeshStandardMaterial({
       color: 0xfbbf24,
-      emissive: 0xd97706,
-      emissiveIntensity: 0.5,
+      emissive: 0xf59e0b,
+      emissiveIntensity: 0.9,
       roughness: 0.2,
-      metalness: 0.75,
+      metalness: 0.8,
     });
 
     const starMesh = new THREE.Mesh(geo, mat);
     starMesh.name = 'starBody';
     group.add(starMesh);
-
-    // Gentle star point light glow
-    const starLight = new THREE.PointLight(0xfde047, 1.2, 6);
-    group.add(starLight);
 
     return group;
   }

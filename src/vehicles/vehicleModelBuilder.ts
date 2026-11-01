@@ -417,20 +417,14 @@ export class VehicleModelBuilder {
     lampR.position.set(0.7, 0.9, frontZ);
     root.add(lampR);
 
-    // 3D Spotlights shining forward
-    const hlL = new THREE.SpotLight(0xfef08a, 2.5, 45, Math.PI / 6, 0.35, 1.0);
-    hlL.position.set(-0.7, 0.9, frontZ);
-    hlL.target.position.set(-0.7, 0, frontZ + 25);
-    root.add(hlL);
-    root.add(hlL.target);
+    // Single unified forward spotlight for 60fps mobile efficiency
+    const hl = new THREE.SpotLight(0xfef08a, 2.8, 48, Math.PI / 5, 0.4, 1.0);
+    hl.position.set(0, 0.9, frontZ);
+    hl.target.position.set(0, 0, frontZ + 25);
+    root.add(hl);
+    root.add(hl.target);
 
-    const hlR = new THREE.SpotLight(0xfef08a, 2.5, 45, Math.PI / 6, 0.35, 1.0);
-    hlR.position.set(0.7, 0.9, frontZ);
-    hlR.target.position.set(0.7, 0, frontZ + 25);
-    root.add(hlR);
-    root.add(hlR.target);
-
-    return { hlL, hlR };
+    return { hlL: hl, hlR: hl };
   }
 
   // Helper to create single wheel group
