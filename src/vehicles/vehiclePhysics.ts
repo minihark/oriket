@@ -286,48 +286,59 @@ export class VehiclePhysics {
 
     // Desired ride height above terrain
     const wheelRad = traits.wheelRadius;
+    const tiltOffset =
+      Math.abs(Math.sin(this.pitch)) * (halfL * 0.5) +
+      Math.abs(Math.sin(this.roll)) * (halfW * 0.4);
+    const maxContactH = Math.max(hFL, hFR, hRL, hRR, hCenter);
+
+    // Absolute minimum ground floor: chassis and wheels CANNOT penetrate this level!
+    const hardGroundLimit = isBoat
+      ? Math.max(maxContactH, 0.15)
+      : maxContactH + tiltOffset + wheelRad * 0.75;
+
     const rideHeightOffset = isBoat ? 0.2 : wheelRad * 0.85;
     const targetGroundY = isBoat
-      ? Math.max(avgGroundH, 0.15)
-      : Math.max(avgGroundH, hCenter) + rideHeightOffset;
-
-    // Hard ground contact threshold (prevents wheels submerging on steep slopes)
-    const maxContactH = Math.max(hFL, hFR, hRL, hRR, hCenter);
-    const hardGroundLimit = isBoat ? Math.max(maxContactH, 0.1) : maxContactH + wheelRad * 0.7;
+      ? Math.max(avgGroundH, 0.25)
+      : Math.max(avgGroundH, hCenter) + rideHeightOffset + tiltOffset;
 
     // Suspension travel window
     const suspensionTravel = isJeep ? 0.75 : isRocket ? 0.8 : 0.55;
     const distAboveTarget = this.position.y - targetGroundY;
 
-    if (distAboveTarget <= suspensionTravel && this.position.y >= hardGroundLimit - 0.4) {
+    if (this.position.y <= hardGroundLimit) {
+      // Solid ground contact: clamp firmly at or above terrain floor
+      this.position.y = hardGroundLimit;
+      if (this.velocity.y < 0) {
+        this.velocity.y = 0;
+      }
       this.isGrounded = true;
-
-      // Spring compression (positive when compressed below target ride height)
+      this.suspensionCompression = Math.max(0, targetGroundY - this.position.y);
+      this.suspensionY *= 0.8;
+    } else if (distAboveTarget <= suspensionTravel) {
+      // Within active suspension travel
+      this.isGrounded = true;
       const compression = targetGroundY - this.position.y;
       this.suspensionCompression = compression;
 
-      // Continuous spring-damper vertical dynamics (smooths bumps and eliminates triangle jitter)
       const springStiffness = traits.suspensionStiffness * 3.5;
       const dampingCoeff = isJeep ? 6.5 : isFire ? 8.5 : 7.0;
 
       const springForce = compression * springStiffness;
       const dampForce = -this.velocity.y * dampingCoeff;
-      const netSuspensionAccel = springForce + dampForce;
+      this.velocity.y += (springForce + dampForce) * safeDt;
 
-      this.velocity.y += netSuspensionAccel * safeDt;
-
-      // Ground safety barrier: softly push chassis up without instantaneous vertex snapping
-      if (this.position.y < hardGroundLimit) {
-        this.position.y += (hardGroundLimit - this.position.y) * Math.min(1.0, safeDt * 22.0);
-        if (this.velocity.y < 0) this.velocity.y = 0;
-      }
-
-      // Visual suspension displacement for chassis bounce
-      this.suspensionY += (-compression * 0.35 - this.suspensionY) * Math.min(1.0, safeDt * 14.0);
+      this.suspensionY += (-compression * 0.2 - this.suspensionY) * Math.min(1.0, safeDt * 14.0);
+      this.suspensionY = THREE.MathUtils.clamp(this.suspensionY, -0.15, 0.25);
     } else {
+      // In mid-air
       this.isGrounded = false;
       this.suspensionCompression = 0;
       this.suspensionY += (0 - this.suspensionY) * Math.min(1.0, safeDt * 8.0);
+    }
+
+    // Safety fallback: if vehicle somehow gets below the ocean floor / void
+    if (this.position.y < -5.0) {
+      this.setPosition(0, 0);
     }
 
     // ----------------------------------------------------
@@ -446,7 +457,7 @@ export class VehiclePhysics {
       const hTwR = IslandTerrain.getHeight(twRx, twRz);
 
       const hAxle = (hTwL + hTwR) * 0.5;
-      const targetTrailerY = hAxle + trailerWheelRadius;
+      const targetTrailerY = Math.max(hAxle, hTwL, hTwR) + trailerWheelRadius;
 
       // Trailer roll across left/right wheels
       const targetTrailerRoll = Math.atan2(hTwR - hTwL, halfTrack * 2.0);
@@ -454,8 +465,11 @@ export class VehiclePhysics {
       // Trailer pitch along the drawbar from hitch down to axle
       const targetTrailerPitch = -Math.atan2(hitchY - targetTrailerY, tongueLength);
 
-      // Smooth terrain adaptation
+      // Smooth terrain adaptation with safety floor
       this.trailerPos.y += (targetTrailerY - this.trailerPos.y) * Math.min(1.0, safeDt * 16.0);
+      if (this.trailerPos.y < targetTrailerY) {
+        this.trailerPos.y = targetTrailerY;
+      }
       this.trailerPitch += (targetTrailerPitch - this.trailerPitch) * Math.min(1.0, safeDt * 16.0);
       this.trailerRoll += (targetTrailerRoll - this.trailerRoll) * Math.min(1.0, safeDt * 16.0);
     }
